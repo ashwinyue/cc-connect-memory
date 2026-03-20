@@ -177,6 +177,7 @@ type Engine struct {
 	rateLimiter      *RateLimiter
 	streamPreview    StreamPreviewCfg
 	relayManager     *RelayManager
+	dataDir          string
 	eventIdleTimeout time.Duration
 
 	// Memory system
@@ -654,6 +655,10 @@ func (e *Engine) SetEventIdleTimeout(d time.Duration) {
 
 func (e *Engine) SetRelayManager(rm *RelayManager) {
 	e.relayManager = rm
+}
+
+func (e *Engine) SetDataDir(dir string) {
+	e.dataDir = dir
 }
 
 func (e *Engine) RelayManager() *RelayManager {
@@ -1761,6 +1766,9 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 		envVars := []string{
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + sessionKey,
+		}
+		if e.dataDir != "" {
+			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
 		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)
@@ -8080,6 +8088,9 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, chatID, message s
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + relaySessionKey,
 		}
+		if e.dataDir != "" {
+			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
+		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)
 			if curPath := os.Getenv("PATH"); curPath != "" {
@@ -8099,7 +8110,22 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, chatID, message s
 		e.sessions.Save()
 	}
 
-	if err := agentSession.Send(message, nil, nil); err != nil {
+	// Inject memory context so the relay agent has access to user facts.
+	promptContent := message
+	if e.memoryEnabled && e.memoryProvider != nil {
+		beforeResult, err := e.memoryProvider.OnBeforeChat(e.ctx, memory.BeforeChatRequest{
+			Query:     message,
+			SessionID: relaySessionKey,
+			ChatID:    chatID,
+		})
+		if err != nil {
+			slog.Warn("relay: memory OnBeforeChat failed", "error", err)
+		} else if beforeResult != nil && beforeResult.ContextText != "" {
+			promptContent = beforeResult.ContextText + "\n\n" + message
+		}
+	}
+
+	if err := agentSession.Send(promptContent, nil, nil); err != nil {
 		return "", fmt.Errorf("send relay message: %w", err)
 	}
 

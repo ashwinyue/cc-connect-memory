@@ -236,6 +236,9 @@ func resolveSocketPath(dataDir string) string {
 	if dataDir != "" {
 		return filepath.Join(dataDir, "run", "api.sock")
 	}
+	if d := os.Getenv("CC_DATA_DIR"); d != "" {
+		return filepath.Join(d, "run", "api.sock")
+	}
 	if home, err := os.UserHomeDir(); err == nil {
 		return filepath.Join(home, ".cc-connect", "run", "api.sock")
 	}
