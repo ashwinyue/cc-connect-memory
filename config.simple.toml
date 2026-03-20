@@ -1,0 +1,89 @@
+data_dir = "workspace"
+attachment_send = ""
+language = "zh"
+
+[[projects]]
+  name = "cat"
+  [projects.agent]
+    type = "claudecode"
+    [projects.agent.options]
+      mode = "default"
+      work_dir = "."
+
+  [[projects.platforms]]
+    type = "feishu"
+    [projects.platforms.options]
+      allow_from = ""
+      app_id = ""
+      app_secret = ""
+
+  [projects.heartbeat]
+
+# 记忆系统配置 - 使用 Kimi API 提取对话事实
+[memory]
+    enabled = true
+    provider = "anthropic"
+    api_key = ""
+    base_url = "https://api.kimi.com/coding"
+    model = "kimi"
+
+[log]
+  level = "info"
+
+[speech]
+  enabled = false
+  provider = ""
+  language = ""
+  [speech.openai]
+    api_key = ""
+    base_url = ""
+    model = ""
+  [speech.groq]
+    api_key = ""
+    model = ""
+  [speech.qwen]
+    api_key = ""
+    base_url = ""
+    model = ""
+
+[tts]
+  enabled = false
+  provider = ""
+  voice = ""
+  tts_mode = ""
+  max_text_len = 0
+  [tts.openai]
+    api_key = ""
+    base_url = ""
+    model = ""
+  [tts.qwen]
+    api_key = ""
+    base_url = ""
+    model = ""
+  [tts.minimax]
+    api_key = ""
+    base_url = ""
+    model = ""
+
+[display]
+
+[stream_preview]
+  enabled = true
+  interval_ms = 1500
+  min_delta_chars = 30
+  max_chars = 2000
+
+[rate_limit]
+
+[relay]
+
+[cron]
+
+[webhook]
+  port = 0
+
+[bridge]
+  port = 0
+
+[management]
+  port = 0
