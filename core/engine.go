@@ -177,7 +177,6 @@ type Engine struct {
 	rateLimiter      *RateLimiter
 	streamPreview    StreamPreviewCfg
 	relayManager     *RelayManager
-	dataDir          string
 	eventIdleTimeout time.Duration
 
 	// Memory system
@@ -655,10 +654,6 @@ func (e *Engine) SetEventIdleTimeout(d time.Duration) {
 
 func (e *Engine) SetRelayManager(rm *RelayManager) {
 	e.relayManager = rm
-}
-
-func (e *Engine) SetDataDir(dir string) {
-	e.dataDir = dir
 }
 
 func (e *Engine) RelayManager() *RelayManager {
@@ -1766,9 +1761,6 @@ func (e *Engine) getOrCreateInteractiveStateWith(sessionKey string, p Platform, 
 		envVars := []string{
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + sessionKey,
-		}
-		if e.dataDir != "" {
-			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
 		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)
@@ -8087,9 +8079,6 @@ func (e *Engine) HandleRelay(ctx context.Context, fromProject, chatID, message s
 		envVars := []string{
 			"CC_PROJECT=" + e.name,
 			"CC_SESSION_KEY=" + relaySessionKey,
-		}
-		if e.dataDir != "" {
-			envVars = append(envVars, "CC_DATA_DIR="+e.dataDir)
 		}
 		if exePath, err := os.Executable(); err == nil {
 			binDir := filepath.Dir(exePath)

@@ -129,15 +129,6 @@ func main() {
 	config.ConfigPath = configPath
 	slog.Info("config loaded", "path", configPath)
 
-	// Resolve data_dir to absolute path so CC_DATA_DIR injected into agent
-	// subprocesses always points to the correct location regardless of their
-	// working directory.
-	if cfg.DataDir != "" {
-		if abs, err := filepath.Abs(cfg.DataDir); err == nil {
-			cfg.DataDir = abs
-		}
-	}
-
 	setupLogger(cfg.Log.Level, logWriter)
 
 	engines := make([]*core.Engine, 0, len(cfg.Projects))
@@ -755,7 +746,6 @@ func main() {
 		for i, e := range engines {
 			apiSrv.RegisterEngine(cfg.Projects[i].Name, e)
 			e.SetRelayManager(relayMgr)
-			e.SetDataDir(cfg.DataDir)
 		}
 		if cronSched != nil {
 			apiSrv.SetCronScheduler(cronSched)

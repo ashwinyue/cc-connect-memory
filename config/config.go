@@ -18,7 +18,7 @@ var configMu sync.Mutex
 var ConfigPath string
 
 type Config struct {
-	DataDir         string              `toml:"data_dir"` // session store directory, default ~/.cc-connect
+	DataDir         string              `toml:"data_dir"` // session store directory, default "workspace"
 	AttachmentSend  string              `toml:"attachment_send"`
 	Projects        []ProjectConfig     `toml:"projects"`
 	Commands        []CommandConfig     `toml:"commands"`     // global custom slash commands
@@ -255,11 +255,7 @@ func Load(path string) (*Config, error) {
 	}
 
 	if cfg.DataDir == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			cfg.DataDir = filepath.Join(home, ".cc-connect")
-		} else {
-			cfg.DataDir = ".cc-connect"
-		}
+		cfg.DataDir = "workspace"
 	}
 	cfg.AttachmentSend = strings.ToLower(strings.TrimSpace(cfg.AttachmentSend))
 	if cfg.AttachmentSend == "" {
