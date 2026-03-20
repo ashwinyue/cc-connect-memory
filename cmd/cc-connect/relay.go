@@ -90,6 +90,11 @@ func runRelaySend(args []string) {
 		os.Exit(1)
 	}
 
+	// Default data_dir to workspace for relay commands
+	if dataDir == "" {
+		dataDir = "workspace"
+	}
+
 	sockPath := resolveSocketPath(dataDir)
 	if _, err := os.Stat(sockPath); os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Error: cc-connect is not running (socket not found: %s)\n", sockPath)

@@ -20,34 +20,34 @@ import (
 // StoreFS implements file-based memory storage.
 // Memories are stored as Markdown files organized by date.
 type StoreFS struct {
-	mu        sync.RWMutex
-	dataDir   string       // Base directory for memory storage
-	extractor Extractor    // Fact extraction service
-	decider   Decider      // Memory conflict resolution
-	compactor Compactor    // Memory compaction service
+	mu            sync.RWMutex
+	dataDir       string        // Base directory for memory storage
+	extractor     Extractor     // Fact extraction service
+	decider       Decider       // Memory conflict resolution
+	compactor     Compactor     // Memory compaction service
 	compactConfig CompactConfig // Compaction configuration
-	logger    *slog.Logger // Logger
+	logger        *slog.Logger  // Logger
 }
 
 // Constants for file organization.
 const (
-	MemoryDirName     = "memory"     // Subdirectory for daily memory files
-	MemoryOverview    = "MEMORY.md"  // Overview file
-	IdentityFile      = "IDENTITY.md"
-	SoulFile          = "SOUL.md"
-	ProfilesFile      = "PROFILES.md"
-	MemoryDateLayout  = "2006-01-02"
-	MemoryFileSuffix  = ".md"
+	MemoryDirName      = "memory"    // Subdirectory for daily memory files
+	MemoryOverview     = "MEMORY.md" // Overview file
+	IdentityFile       = "IDENTITY.md"
+	SoulFile           = "SOUL.md"
+	ProfilesFile       = "PROFILES.md"
+	MemoryDateLayout   = "2006-01-02"
+	MemoryFileSuffix   = ".md"
 	EntryHeadingPrefix = "## Entry "
-	yamlFence         = "```yaml"
-	codeFence         = "```"
+	yamlFence          = "```yaml"
+	codeFence          = "```"
 )
 
 // Errors.
 var (
-	ErrMemoryDisabled   = errors.New("memory system is disabled")
-	ErrNotFound         = errors.New("memory not found")
-	ErrExtractorNotSet  = errors.New("extractor not configured")
+	ErrMemoryDisabled  = errors.New("memory system is disabled")
+	ErrNotFound        = errors.New("memory not found")
+	ErrExtractorNotSet = errors.New("extractor not configured")
 )
 
 // memoryEntryMeta is the YAML metadata for a memory entry.
@@ -117,55 +117,31 @@ func memoryOverviewPath(baseDir string) string {
 	return filepath.Join(baseDir, MemoryOverview)
 }
 
-// OnBeforeChat retrieves relevant memories and formats them as context.
-func (s *StoreFS) OnBeforeChat(ctx context.Context, req BeforeChatRequest) (*BeforeChatResult, error) {
+// OnBeforeChat injects the full MEMORY.md overview into the context so the
+// agent always has a complete picture of known facts — not just a
+// keyword-matched subset.
+func (s *StoreFS) OnBeforeChat(_ context.Context, _ BeforeChatRequest) (*BeforeChatResult, error) {
 	if s.dataDir == "" {
 		return nil, nil
 	}
 
-	// Build filters based on request
-	filters := make(map[string]any)
-	if req.UserID != "" {
-		filters[MetadataKeyUserID] = req.UserID
-	}
-	if req.ChatID != "" {
-		filters["chat_id"] = req.ChatID
-	}
-
-	// Search for relevant memories
-	searchReq := SearchRequest{
-		Query:   req.Query,
-		Limit:   DefaultMemoryLimit,
-		Filters: filters,
-	}
-
-	resp, err := s.Search(ctx, searchReq)
+	overviewPath := memoryOverviewPath(s.dataDir)
+	content, err := os.ReadFile(overviewPath)
 	if err != nil {
-		s.logger.Warn("memory search failed", "error", err)
-		return nil, nil
-	}
-
-	if len(resp.Results) == 0 {
-		return nil, nil
-	}
-
-	// Format memories as context
-	var sb strings.Builder
-	sb.WriteString("<memory-context>\n")
-	sb.WriteString("Relevant context from previous conversations:\n")
-	for _, item := range resp.Results {
-		if item.Memory == "" {
-			continue
+		if os.IsNotExist(err) {
+			return nil, nil
 		}
-		sb.WriteString("- ")
-		sb.WriteString(TruncateSnippet(item.Memory, MemoryContextMaxChars))
-		sb.WriteString("\n")
+		s.logger.Warn("failed to read MEMORY.md for context injection", "error", err)
+		return nil, nil
 	}
-	sb.WriteString("</memory-context>")
 
-	return &BeforeChatResult{
-		ContextText: sb.String(),
-	}, nil
+	overview := strings.TrimSpace(string(content))
+	if overview == "" || overview == strings.TrimSpace(DefaultMemoryOverview) {
+		return nil, nil // No real memories yet
+	}
+
+	result := "<memory-context>\n" + overview + "\n</memory-context>"
+	return &BeforeChatResult{ContextText: result}, nil
 }
 
 // OnAfterChat extracts facts from the conversation and stores them.
@@ -1151,10 +1127,10 @@ func (s *StoreFS) Compact(ctx context.Context) (*CompactResult, error) {
 	_ = s.syncOverview()
 
 	return &CompactResult{
-		BeforeCount:  len(allMemories),
-		AfterCount:   len(compacted),
-		MergedIDs:    removedIDs,
-		NewMemories:  newMemories,
+		BeforeCount: len(allMemories),
+		AfterCount:  len(compacted),
+		MergedIDs:   removedIDs,
+		NewMemories: newMemories,
 	}, nil
 }
 

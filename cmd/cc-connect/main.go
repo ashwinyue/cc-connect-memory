@@ -539,8 +539,8 @@ func main() {
 			continue
 		}
 
-		// Create memory storage directory
-		memDir := filepath.Join(cfg.DataDir, "memory", proj.Name)
+		// Memory lives alongside identity files under bot/{project}/
+		memDir := filepath.Join(cfg.DataDir, "bot", proj.Name)
 		if err := os.MkdirAll(memDir, 0o755); err != nil {
 			slog.Error("failed to create memory directory", "path", memDir, "err", err)
 			continue
@@ -637,8 +637,8 @@ func main() {
 			continue
 		}
 
-		// Create memory directory (per-project isolation)
-		memDir := filepath.Join(cfg.DataDir, "memory", proj.Name)
+		// Memory lives alongside identity files under bot/{project}/
+		memDir := filepath.Join(cfg.DataDir, "bot", proj.Name)
 
 		// Ensure default MEMORY.md and memory/ directory exist
 		if created, err := memory.EnsureDefaultFiles(memDir); err != nil {
