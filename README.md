@@ -307,6 +307,9 @@ Notes:
 ## 📚 Documentation
 
 - [Usage Guide](docs/usage.md) — Complete feature documentation
+- [Core Identity](docs/core-identity.md) — Bot personality management (IDENTITY.md, SOUL.md)
+- [Core Memory](docs/core-memory.md) — Cross-session memory system
+- [Core Profile](docs/core-profile.md) — User/group profile management
 - [INSTALL.md](INSTALL.md) — AI-agent-friendly installation guide
 - [config.example.toml](config.example.toml) — Configuration template
 

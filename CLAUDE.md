@@ -63,9 +63,9 @@ Optional capability interfaces (implement only when needed):
 
 ### Core Sub-packages
 
-- **`core/identity/`** — bot personality manager; loads `IDENTITY.md` and `SOUL.md` from `{data_dir}/bot/{project}/`; injected into Engine via `SetIdentityManager()`
-- **`core/memory/`** — cross-session memory system; file-based storage (`StoreFS`) with optional LLM extractor; injected via `SetMemoryProvider()`; exposes `/memory` command
-- **`core/profile/`** — user/group profile manager; loads `PROFILES.md` for multi-user identity recognition; injected via `SetProfileManager()`
+- **`core/identity/`** — bot personality manager; loads `IDENTITY.md` and `SOUL.md` from `{data_dir}/bot/{project}/`; injected into Engine via `SetIdentityManager()`; see [docs/core-identity.md](../docs/core-identity.md)
+- **`core/memory/`** — cross-session memory system; file-based storage (`StoreFS`) with optional LLM extractor; injected via `SetMemoryProvider()`; exposes `/memory` command; see [docs/core-memory.md](../docs/core-memory.md)
+- **`core/profile/`** — user/group profile manager; loads `PROFILES.md` for multi-user identity recognition; injected via `SetProfileManager()`; see [docs/core-profile.md](../docs/core-profile.md)
 
 ## Development Rules
 
