@@ -98,11 +98,33 @@ func BuildProfileMetadata(userID, channelIdentityID, displayName, platform strin
 	return m
 }
 
+// MemoryConfig for configuring memory system behavior.
+type MemoryConfig struct {
+	Enabled               bool    // Enable/disable memory system
+	DebounceSeconds       int     // Seconds to wait before processing (debounce)
+	MaxFacts              int     // Maximum number of facts to store
+	FactConfidenceThreshold float64 // Minimum confidence for storing facts (0.0-1.0)
+	InjectionEnabled      bool    // Whether to inject memory into system prompt
+	MaxInjectionTokens    int     // Maximum tokens for memory injection
+}
+
+// DefaultMemoryConfig returns the default configuration.
+func DefaultMemoryConfig() MemoryConfig {
+	return MemoryConfig{
+		Enabled:               true,
+		DebounceSeconds:      30,
+		MaxFacts:             100,
+		FactConfidenceThreshold: 0.7,
+		InjectionEnabled:     true,
+		MaxInjectionTokens:   2000,
+	}
+}
+
 // Constants for memory system configuration.
 const (
-	DefaultMemoryLimit    = 8   // Max memories to retrieve
-	MaxMemoryContextItems = 16  // Max items in context
-	MemoryContextMaxChars = 220 // Max chars per memory in context
+	DefaultMemoryLimit      = 8   // Max memories to retrieve
+	MaxMemoryContextItems  = 16  // Max items in context
+	MemoryContextMaxChars  = 220 // Max chars per memory in context
 )
 
 // DeduplicateItems removes duplicate MemoryItems by ID.

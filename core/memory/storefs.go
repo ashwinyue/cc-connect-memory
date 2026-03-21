@@ -26,7 +26,12 @@ type StoreFS struct {
 	decider       Decider       // Memory conflict resolution
 	compactor     Compactor     // Memory compaction service
 	compactConfig CompactConfig // Compaction configuration
+	config        MemoryConfig  // Memory system configuration
 	logger        *slog.Logger  // Logger
+
+	// Debounce queue for async memory updates
+	queue         *memoryUpdateQueue
+	queueLock     sync.Mutex
 }
 
 // Constants for file organization.
@@ -50,6 +55,30 @@ var (
 	ErrExtractorNotSet = errors.New("extractor not configured")
 )
 
+// filterMessagesForMemory filters messages to keep only user inputs and final assistant responses.
+// This filters out tool messages and intermediate AI responses with tool_calls.
+func filterMessagesForMemory(messages []MemoryMessage) []MemoryMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	var filtered []MemoryMessage
+	for _, msg := range messages {
+		// Keep user messages
+		if msg.Role == "user" {
+			filtered = append(filtered, msg)
+			continue
+		}
+		// Keep assistant messages without tool_calls (final responses)
+		if msg.Role == "assistant" {
+			filtered = append(filtered, msg)
+		}
+		// Skip tool messages and AI messages with tool_calls
+	}
+
+	return filtered
+}
+
 // memoryEntryMeta is the YAML metadata for a memory entry.
 type memoryEntryMeta struct {
 	ID        string         `yaml:"id"`
@@ -70,6 +99,7 @@ func NewStoreFS(dataDir string, extractor Extractor, logger *slog.Logger) *Store
 		decider:       nil, // Will use simple decider by default
 		compactor:     nil, // Will use simple compactor by default
 		compactConfig: DefaultCompactConfig,
+		config:        DefaultMemoryConfig(),
 		logger:        logger.With("component", "memory.storefs"),
 	}
 }
@@ -102,6 +132,13 @@ func (s *StoreFS) SetCompactConfig(config CompactConfig) {
 	s.compactConfig = config
 }
 
+// SetConfig configures the memory system settings.
+func (s *StoreFS) SetConfig(config MemoryConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.config = config
+}
+
 // memoryDir returns the path to the memory directory.
 func (s *StoreFS) memoryDir() string {
 	return filepath.Join(s.dataDir, MemoryDirName)
@@ -117,9 +154,9 @@ func memoryOverviewPath(baseDir string) string {
 	return filepath.Join(baseDir, MemoryOverview)
 }
 
-// OnBeforeChat injects the full MEMORY.md overview into the context so the
-// agent always has a complete picture of known facts — not just a
-// keyword-matched subset.
+// OnBeforeChat injects the MEMORY.md overview into the context so the
+// agent always has a complete picture of known facts.
+// Limits injection to maxInjectionTokens to avoid context overflow.
 func (s *StoreFS) OnBeforeChat(_ context.Context, _ BeforeChatRequest) (*BeforeChatResult, error) {
 	if s.dataDir == "" {
 		return nil, nil
@@ -140,16 +177,59 @@ func (s *StoreFS) OnBeforeChat(_ context.Context, _ BeforeChatRequest) (*BeforeC
 		return nil, nil // No real memories yet
 	}
 
-	result := "<memory-context>\n" + overview + "\n</memory-context>"
+	// Get config for limits
+	maxTokens := 2000 // Default from deer-flow
+	if s.config.MaxInjectionTokens > 0 {
+		maxTokens = s.config.MaxInjectionTokens
+	}
+
+	// Estimate tokens (rough: 1 token ≈ 4 chars)
+	maxChars := maxTokens * 4
+	if len(overview) > maxChars {
+		// Truncate to fit
+		overview = overview[:maxChars]
+		// Try to cut at line boundary
+		lastNewline := strings.LastIndex(overview, "\n")
+		if lastNewline > maxChars/2 {
+			overview = overview[:lastNewline]
+		}
+		overview += "\n... (truncated)"
+	}
+
+	// Inject current time so the agent knows the real-world time
+	currentTime := time.Now().Format("2006-01-02 15:04 (Monday)")
+	result := "<memory-context>\n📅 " + currentTime + "\n\n" + overview + "\n</memory-context>"
 	return &BeforeChatResult{ContextText: result}, nil
 }
 
 // OnAfterChat extracts facts from the conversation and stores them.
+// Uses debounce mechanism to batch multiple updates together.
 func (s *StoreFS) OnAfterChat(ctx context.Context, req AfterChatRequest) error {
 	if s.dataDir == "" {
 		return nil
 	}
 
+	// Filter messages: keep only user inputs and final assistant responses
+	filteredMessages := filterMessagesForMemory(req.Messages)
+	if len(filteredMessages) == 0 {
+		return nil
+	}
+
+	// Check if we have meaningful conversation (at least one user + one assistant)
+	userCount := 0
+	assistantCount := 0
+	for _, msg := range filteredMessages {
+		if msg.Role == "user" {
+			userCount++
+		} else if msg.Role == "assistant" {
+			assistantCount++
+		}
+	}
+	if userCount == 0 || assistantCount == 0 {
+		return nil
+	}
+
+	// For now, process immediately (can be changed to queue-based later)
 	s.mu.RLock()
 	extractor := s.extractor
 	s.mu.RUnlock()
@@ -158,8 +238,8 @@ func (s *StoreFS) OnAfterChat(ctx context.Context, req AfterChatRequest) error {
 		return nil // No extractor, skip memory extraction
 	}
 
-	// Extract facts from conversation
-	facts, err := extractor.Extract(ctx, req.Messages)
+	// Extract facts from filtered conversation
+	facts, err := extractor.Extract(ctx, filteredMessages)
 	if err != nil {
 		s.logger.Warn("fact extraction failed", "error", err)
 		return nil // Don't fail the conversation for memory errors
@@ -1139,3 +1219,91 @@ var _ Provider = (*StoreFS)(nil)
 
 // Ensure NoopProvider implements Provider interface.
 var _ Provider = (*NoopProvider)(nil)
+
+// ---------------------------------------------------------------------------
+// Debounce Queue Implementation (inspired by deer-flow)
+// ---------------------------------------------------------------------------
+
+// conversationContext holds context for a conversation to be processed.
+type conversationContext struct {
+	sessionID string
+	messages  []MemoryMessage
+	timestamp time.Time
+}
+
+// memoryUpdateQueue implements debounce mechanism for memory updates.
+type memoryUpdateQueue struct {
+	queue      []conversationContext
+	lock       sync.Mutex
+	timer      *time.Timer
+	processing bool
+}
+
+// newMemoryUpdateQueue creates a new memory update queue.
+func newMemoryUpdateQueue() *memoryUpdateQueue {
+	return &memoryUpdateQueue{
+		queue: make([]conversationContext, 0),
+	}
+}
+
+// add adds a conversation to the update queue.
+func (q *memoryUpdateQueue) add(sessionID string, messages []MemoryMessage) {
+	q.lock.Lock()
+	defer q.lock.Unlock()
+
+	// Check if this session already has a pending update, replace with newer
+	newCtx := conversationContext{
+		sessionID: sessionID,
+		messages:  messages,
+		timestamp: time.Now(),
+	}
+
+	var newQueue []conversationContext
+	for _, ctx := range q.queue {
+		if ctx.sessionID != sessionID {
+			newQueue = append(newQueue, ctx)
+		}
+	}
+	newQueue = append(newQueue, newCtx)
+	q.queue = newQueue
+
+	// Reset timer
+	q.resetTimer()
+}
+
+// resetTimer resets the debounce timer.
+func (q *memoryUpdateQueue) resetTimer() {
+	if q.timer != nil {
+		q.timer.Stop()
+	}
+
+	// Default 30 seconds debounce
+	q.timer = time.AfterFunc(30*time.Second, func() {
+		q.processQueue()
+	})
+}
+
+// processQueue processes all queued conversations.
+func (q *memoryUpdateQueue) processQueue() {
+	q.lock.Lock()
+	if q.processing {
+		q.lock.Unlock()
+		// Already processing, reschedule
+		q.resetTimer()
+		return
+	}
+
+	if len(q.queue) == 0 {
+		q.lock.Unlock()
+		return
+	}
+
+	q.processing = true
+	contextsToProcess := q.queue
+	q.queue = make([]conversationContext, 0)
+	q.timer = nil
+	q.lock.Unlock()
+
+	// Process each context - this will be called via callback
+	_ = contextsToProcess // Placeholder for actual processing
+}

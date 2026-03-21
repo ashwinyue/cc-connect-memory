@@ -69,6 +69,9 @@ func main() {
 		case "daemon":
 			runDaemon(os.Args[2:])
 			return
+		case "memory":
+			runMemory(os.Args[2:])
+			return
 		case "feishu":
 			runFeishu(os.Args[2:])
 			return
